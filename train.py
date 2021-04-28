@@ -234,20 +234,15 @@ def main():
 
         logging.info('Epoch {:03d}, Learning Rate {:g}'.format(epoch + 1, optimizer.param_groups[0]['lr']))
 
-        pbar = tqdm(total=len(train_loader), unit=' batches')
-        pbar.set_description('Epoch {}/{}, Learning Rate {:g}'.format(epoch + 1, args.epoch, optimizer.param_groups[0]['lr']))
-
         train(logs=logs,
               data_loader=train_loader,
               net=net,
               # feature_center=feature_center,
-              optimizer=optimizer,
-              pbar=pbar)
+              optimizer=optimizer)
         validate(logs=logs,
                  data_loader=validate_loader,
                  net=net,
                  batch_index=epoch*len(train_loader))
-                 # pbar=pbar)
         if scheduler:
             if isinstance(scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
                 scheduler.step(logs['val_loss'])
@@ -257,7 +252,6 @@ def main():
         callback.on_epoch_end(logs, net)#, feature_center=feature_center)
         if args.tensorboard:
             writer.flush()
-        pbar.close()
 
 #TODO 这个函数还没写好
 def vis_cam(net,epoch_idx):
@@ -293,7 +287,7 @@ def train(**kwargs):
     net = kwargs['net']
     # feature_center = kwargs['feature_center']
     optimizer = kwargs['optimizer']
-    pbar = kwargs['pbar']
+    epoch=logs['epoch']
 
     # metrics initialization
     loss_container.reset()
@@ -301,75 +295,79 @@ def train(**kwargs):
 
     start_time = time.time()
     net.train()
-    for i, (X, y) in enumerate(data_loader):
-        optimizer.zero_grad()
+    with tqdm(total=len(data_loader), unit=' batches',ncols=0) as pbar:
+        for i, (X, y) in enumerate(data_loader):
+            pbar.set_description(
+                'Epoch {}/{}, Learning Rate {:g}, Progress Rate'.format(epoch, args.epoch, optimizer.param_groups[0]['lr']))
 
-        # obtain data for training
-        X = X.to(device)
-        y = y.to(device)
-        # blur_img=blur_img.to(device)
+            optimizer.zero_grad()
 
-        ##################################
-        # Raw Image
-        ##################################
-        # raw images forward
-        # y_pred_raw,y_pred_parts,y_pred_drop= net(X)
+            # obtain data for training
+            X = X.to(device)
+            y = y.to(device)
+            # blur_img=blur_img.to(device)
 
-        y_pred_raw = net(X)
-        # Update Feature Center
-        # feature_center_batch = F.normalize(feature_center[y], dim=-1)
-        # feature_center[y] += config.beta * (raw_feature.detach() - feature_center_batch)
+            ##################################
+            # Raw Image
+            ##################################
+            # raw images forward
+            # y_pred_raw,y_pred_parts,y_pred_drop= net(X)
 
-        ##################################
-        # Attention Cropping
-        ##################################
-        # with torch.no_grad():
-        #     crop_images = batch_augment(X, attention_map[:, :1, :, :], mode='crop', theta=(0.4, 0.6), padding_ratio=0.1)
+            y_pred = net(X)
+            # Update Feature Center
+            # feature_center_batch = F.normalize(feature_center[y], dim=-1)
+            # feature_center[y] += config.beta * (raw_feature.detach() - feature_center_batch)
 
-        # crop images forward
-        # y_pred_crop, _, _ = net(crop_images)
+            ##################################
+            # Attention Cropping
+            ##################################
+            # with torch.no_grad():
+            #     crop_images = batch_augment(X, attention_map[:, :1, :, :], mode='crop', theta=(0.4, 0.6), padding_ratio=0.1)
 
-        ##################################
-        # Attention Dropping
-        ##################################
-        # with torch.no_grad():
-        #     drop_images = batch_augment(X, attention_map[:, 1:, :, :], mode='drop', theta=(0.2, 0.5))
+            # crop images forward
+            # y_pred_crop, _, _ = net(crop_images)
 
-        # drop images forward
-        # y_pred_drop, _, _ = net(drop_images)
+            ##################################
+            # Attention Dropping
+            ##################################
+            # with torch.no_grad():
+            #     drop_images = batch_augment(X, attention_map[:, 1:, :, :], mode='drop', theta=(0.2, 0.5))
 
-        # Loss
-        # batch_loss = circle_loss_(raw_loss).mean() + \
-        batch_loss = loss(y_pred_raw, y)
+            # drop images forward
+            # y_pred_drop, _, _ = net(drop_images)
 
-                     # center_loss(raw_feature, feature_center_batch)
+            # Loss
+            # batch_loss = circle_loss_(raw_loss).mean() + \
+            batch_loss = loss(y_pred, y)
+            # center_loss(raw_feature, feature_center_batch)
 
-        # backward
-        batch_loss.backward()
-        optimizer.step()
+            # backward
+            batch_loss.backward()
+            optimizer.step()
 
-        # metrics: Loss and top-1,5 error
-        with torch.no_grad():
-            epoch_loss = loss_container(batch_loss.item())
-            epoch_raw_acc = raw_metric(y_pred_raw, y)
+            # metrics: Loss and top-1,5 error
+            with torch.no_grad():
+                epoch_loss = loss_container(batch_loss.item())
+                epoch_acc = raw_metric(y_pred, y)
+            pbar.set_postfix({'Train Loss': '{:.5f}'.format(epoch_loss),
+                              'Train Acc': '{:.2f}%, {:.2f}%'.format(epoch_acc[0], epoch_acc[1])})
+            # end of this batch
+            batch_info = 'Train Loss {:.4f}, Raw Acc ({:.2f}, {:.2f})'.format(
+                epoch_loss, epoch_acc[0], epoch_acc[1])
 
-        # end of this batch
-        batch_info = 'Loss {:.4f}, Raw Acc ({:.2f}, {:.2f})'.format(
-            epoch_loss, epoch_raw_acc[0], epoch_raw_acc[1])
+            # batch_info = 'Loss {:.4f}, Raw Acc ({:.2f}, {:.2f}), Drop Acc ({:.2f}, {:.2f})'.format(
+            #     epoch_loss, epoch_raw_acc[0], epoch_raw_acc[1],epoch_drop_acc[0],epoch_drop_acc[1])
+            # train_acc_writer.add_scalar('acc',epoch_raw_acc[0],logs['epoch']*len(data_loader)+i)
+            # pbar.set_postfix_str(batch_info)
+            pbar.update()
+            # print(batch_info, end='')
 
-        # batch_info = 'Loss {:.4f}, Raw Acc ({:.2f}, {:.2f}), Drop Acc ({:.2f}, {:.2f})'.format(
-        #     epoch_loss, epoch_raw_acc[0], epoch_raw_acc[1],epoch_drop_acc[0],epoch_drop_acc[1])
-        # train_acc_writer.add_scalar('acc',epoch_raw_acc[0],logs['epoch']*len(data_loader)+i)
-        # pbar.set_postfix_str(batch_info)
-        pbar.update()
-        print(batch_info, end='')
-    print('')
     # end of this epoch
     logs['train_{}'.format(loss_container.name)] = epoch_loss
-    logs['train_raw_{}'.format(raw_metric.name)] = epoch_raw_acc
+    logs['train_raw_{}'.format(raw_metric.name)] = epoch_acc
     if args.tensorboard:
         writer.add_scalar('Loss/train', epoch_loss, (logs['epoch'] - 1))
-        writer.add_scalar('Accuracy/train', epoch_raw_acc[0], (logs['epoch'] - 1))
+        writer.add_scalar('Accuracy/train', epoch_acc[0], (logs['epoch'] - 1))
 
     # begin training
     logs['train_info'] = batch_info
@@ -384,6 +382,7 @@ def validate(**kwargs):
     logs = kwargs['logs']
     data_loader = kwargs['data_loader']
     net = kwargs['net']
+    epoch=logs['epoch']
     # batch_index=kwargs['batch_index']
     # pbar = kwargs['pbar']
 
@@ -394,37 +393,42 @@ def validate(**kwargs):
     # begin validation
     start_time = time.time()
     net.eval()
-    with torch.no_grad():
-        for i, (X, y) in enumerate(data_loader):
-            # obtain data
-            X = X.to(device)
-            y = y.to(device)
+    with tqdm(total=len(data_loader), unit=' batches',ncols=0) as pbar:
+        with torch.no_grad():
+            for i, (X, y) in enumerate(data_loader):
+                pbar.set_description('Epoch {}/{}, Process Rate'.format(epoch, args.epoch))
 
-            ##################################
-            # Raw Image
-            ##################################
-            y_pred_raw = net(X)
+                # obtain data
+                X = X.to(device)
+                y = y.to(device)
 
-            ##################################
-            # Object Localization and Refinement
-            ##################################
-            # crop_images = batch_augment(X, attention_map, mode='crop', theta=0.1, padding_ratio=0.05)
-            # y_pred_crop, _, _ = net(crop_images)
+                ##################################
+                # Raw Image
+                ##################################
+                y_pred = net(X)
 
-            ##################################
-            # Final prediction
-            ##################################
-            # y_pred = (y_pred_raw + y_pred_crop) / 2.
+                ##################################
+                # Object Localization and Refinement
+                ##################################
+                # crop_images = batch_augment(X, attention_map, mode='crop', theta=0.1, padding_ratio=0.05)
+                # y_pred_crop, _, _ = net(crop_images)
 
-            # Loss
-            batch_loss = loss(y_pred_raw, y)
-            # batch_loss = circle_loss_(raw_loss).mean()
-            epoch_loss = loss_container(batch_loss.item())
+                ##################################
+                # Final prediction
+                ##################################
+                # y_pred = (y_pred_raw + y_pred_crop) / 2.
 
-            # metrics: top-1,5 error
-            epoch_acc = raw_metric(y_pred_raw, y)
+                # Loss
+                batch_loss = loss(y_pred, y)
+                # batch_loss = circle_loss_(raw_loss).mean()
+                epoch_loss = loss_container(batch_loss.item())
 
+                # metrics: top-1,5 error
+                epoch_acc = raw_metric(y_pred, y)
 
+                pbar.set_postfix({'Val Loss': '{:.5f}'.format(epoch_loss),
+                                  'Val Acc': '{:.2f}%, {:.2f}%'.format(epoch_acc[0], epoch_acc[1])})
+                pbar.update()
     # end of validation
     logs['val_{}'.format(loss_container.name)] = epoch_loss
     logs['val_{}'.format(raw_metric.name)] = epoch_acc
