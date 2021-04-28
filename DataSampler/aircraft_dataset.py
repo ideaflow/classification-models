@@ -6,7 +6,7 @@ import os
 import pdb
 from PIL import Image
 from torch.utils.data import Dataset
-from utils import get_transform
+from DataAugment import get_transform
 
 # DATAPATH = '/home/xuzhi/wechange/Dataset/fgvc-aircraft-2013b/data'
 FILENAME_LENGTH = 7

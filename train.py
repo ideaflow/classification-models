@@ -10,8 +10,8 @@ from tqdm import tqdm
 import torch
 import torch.nn as nn
 import torch.hub
-import torchvision
-from VisualizeTools import GradCam,show_cam_on_image
+# import torchvision
+# from VisualizeTools import GradCam,show_cam_on_image
 
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
@@ -21,9 +21,9 @@ import numpy as np
 import math
 import gc
 
-from Backbone import ResNet
 from DataSampler import get_trainval_datasets
-from utils import CenterLoss, AverageMeter, TopKAccuracyMetric, ModelCheckpoint, batch_augment,CircleLoss
+from Backbone import *
+from Tools import *
 from multiprocessing import cpu_count
 
 # GPU settings
@@ -223,7 +223,7 @@ def main():
     # TRAINING
     ##################################
     logging.info('Start training: Total epochs: {}, Batch size: {}, Training size: {}, Validation size: {}'.
-                 format(args.epoch, args.batch_size, len(train_dataset), len(validate_dataset)))
+                 format(args.epoch, args.train_batch_size, len(train_dataset), len(validate_dataset)))
     logging.info('')
 
     for epoch in range(start_epoch, args.epoch):
