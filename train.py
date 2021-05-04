@@ -11,15 +11,11 @@ import torch
 import torch.nn as nn
 import torch.hub
 # import torchvision
-# from VisualizeTools import GradCam,show_cam_on_image
+from Visualization import vis_cam
 
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 import argparse
-import cv2
-import numpy as np
-import math
-import gc
 
 from DataSampler import get_trainval_datasets
 from Backbone import *
@@ -56,8 +52,8 @@ test_group=parser.add_argument_group('test','网络测试相关的参数')
 test_group.add_argument('--test_batch_size',type=int,default=32,help='总共训练几轮')
 
 network_group=parser.add_argument_group('network','网络结构相关的参数')
-network_group.add_argument('--net_arch',type=str,choices=['resnet50','resnet50_cbam','resnet50_se','resnet50_coord',
-                           ], required=True,help='网络结构')
+network_group.add_argument('--net_arch',type=str,choices=['resnet50','resnet50_cbam','resnet50_se',
+                            'resnet50_coord'], required=True,help='网络结构')
 network_group.add_argument('--fea_norm',action='store_true',help='是否执行fc层特征归一化')
 network_group.add_argument('--weight_norm',action='store_true',help='是否执行fc层权重归一化')
 network_group.add_argument('--fc_bias',action='store_true',help='fc层是否需要bias')
@@ -70,7 +66,8 @@ pretrain_group.add_argument('--frozen',action='store_true',help='已加载权重
 pretrain_group.add_argument('--checkpoint_path',metavar='DIR',default='',help='已训练的权重保存位置')
 
 visualize_group=parser.add_argument_group('visualize','网络可视化相关的参数')
-visualize_group.add_argument('--visualize',action='store_true',help='是否每轮训练保存类激活图')
+visualize_group.add_argument('--visualize',type=str,choices=['','cam','gradcam'],
+                             default='',help='使用何种网络可视化方法')
 
 save_group=parser.add_argument_group('save','结果保存相关的参数')
 save_group.add_argument('--save_dir',metavar='DIR', required=True,help='训练结果保存路径')
@@ -253,33 +250,6 @@ def main():
         if args.tensorboard:
             writer.flush()
 
-#TODO 这个函数还没写好
-def vis_cam(net,epoch_idx):
-    global images,labels
-    grad_cam = GradCam(model=net, feature_module=net.layer4, target_layer_names=["2"], use_cuda=True)
-
-    # cam_images=torch.zeros_like(images)
-    rows=round(math.sqrt(images.shape[0]))
-    columns=math.ceil(images.shape[0]/rows)
-    cam_images=np.zeros((rows*images.shape[2],columns*images.shape[3],3),dtype=np.uint8)
-
-    for i in range(images.shape[0]):
-        cam = grad_cam(images[i].unsqueeze(0), labels[i].item())
-        cv_img = cv2.cvtColor(np.asarray(ToPILImage(images[i] * STD + MEAN)), cv2.COLOR_RGB2BGR)
-        cam_img = show_cam_on_image(cv_img, cam)
-        cur_x=i%columns*images.shape[2]
-        cur_y=i//columns*images.shape[3]
-        cam_images[cur_x:cur_x+images.shape[2],cur_y:cur_y+images.shape[3]]=cam_img
-    #     cam_images[i] = torchvision.transforms.ToTensor()(Image.fromarray(cv2.cvtColor(cam_img,cv2.COLOR_BGR2RGB)))
-    # create grid of images
-    # img_grid = torchvision.utils.make_grid(images)
-    cv2.imwrite(os.path.join(args.save_dir,'epoch_%d.jpg'%epoch_idx),cam_images)
-    # write to tensorboard
-    # writer.add_image('train/class_activate_map', img_grid)
-    # TODO 是否需要手动删除对象，释放内存？
-    del grad_cam,cam_images
-    gc.collect()
-
 def train(**kwargs):
     # Retrieve training configuration
     logs = kwargs['logs']
@@ -433,7 +403,7 @@ def validate(**kwargs):
     logs['val_{}'.format(loss_container.name)] = epoch_loss
     logs['val_{}'.format(raw_metric.name)] = epoch_acc
     if args.visualize:
-        vis_cam(net,logs['epoch'])
+        vis_cam(net,images,labels,os.path.join(args.save_dir,'cam_epoch%d.jpg'%epoch))
     end_time = time.time()
     if args.tensorboard:
         writer.add_scalar('Loss/test', epoch_loss, logs['epoch']-1)
@@ -442,7 +412,7 @@ def validate(**kwargs):
     # test_loss_writer.add_scalar('Loss', epoch_loss, batch_loss)
     # test_acc_writer.add_scalar('acc',epoch_acc[0],batch_index)
     # pbar.set_postfix_str('{}, {}'.format(logs['train_info'], batch_info))
-    print(batch_info)
+    # print(batch_info)
     # write log for this epoch
     logging.info('Valid: {}, Time {:3.2f}'.format(batch_info, end_time - start_time))
     logging.info('')
