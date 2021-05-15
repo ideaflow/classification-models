@@ -45,5 +45,11 @@
 #### 神经网络可视化
 
 - [ ] Zhou B, Khosla A, Lapedriza A, et al. Learning deep features for discriminative localization[C]//Proceedings of the IEEE conference on computer vision and pattern recognition. 2016: 2921-2929.
-
 - [x] Selvaraju R R, Cogswell M, Das A, et al. Grad-cam: Visual explanations from deep networks via gradient-based localization[C]//Proceedings of the IEEE international conference on computer vision. 2017: 618-626.
+
+#### 实验结果
+
+| Backbone | Attn | Loss                      | Top1 Acc |
+| -------- | ---- | ------------------------- | -------- |
+| ResNet50 | None | label smothing softmax ce | 87.159%  |
+

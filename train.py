@@ -21,7 +21,7 @@ from DataSampler import get_trainval_datasets
 from Backbone import *
 from Tools import *
 from multiprocessing import cpu_count
-
+from Loss import *
 # GPU settings
 assert torch.cuda.is_available()
 device = torch.device("cuda:0")
@@ -30,7 +30,7 @@ torch.backends.cudnn.benchmark = True
 parser = argparse.ArgumentParser(description='训练参数')
 dataset_group=parser.add_argument_group('dataset','数据集相关的参数')
 dataset_group.add_argument('--dataset_path', metavar='DIR', required=True, help='数据集路径')
-dataset_group.add_argument('--dataset_tag', type=str,choices=['bird','aircraft','dog','car'],required=True,help='数据集类型')
+dataset_group.add_argument('--dataset_tag', type=str,choices=['bird','aircraft','dog','car','cifar10'],required=True,help='数据集类型')
 dataset_group.add_argument('--image_size',nargs=2, type=int, default=[224,224],help='输入图片的尺寸')
 
 scheduler_group=parser.add_argument_group('scheduler','学习率参数')
@@ -77,8 +77,8 @@ save_group.add_argument('--rm_log',action='store_true',help='训练前是否清�
 save_group.add_argument('--tensorboard',action='store_true',help='是否使用tensorboard')
 
 loss_group=parser.add_argument_group('loss','损失函数相关的参数')
-loss_group.add_argument('--loss_type',type=str,choices=['softmax_ce','center_loss','arcface_loss'],default='softmax_ce',
-                        help='损失函数类型')
+loss_group.add_argument('--loss_type',type=str,choices=['softmax_ce','center_loss','arcface_loss','labelsmooth_ce'],
+                        default='softmax_ce', help='损失函数类型')
 loss_group.add_argument('--margin',type=float,default=0.0,help='损失中的间隔大小')
 
 args = parser.parse_args()
@@ -86,6 +86,8 @@ args = parser.parse_args()
 # Loss functions
 if args.loss_type=='softmax_ce':
     loss = nn.CrossEntropyLoss()
+elif args.loss_type=='labelsmooth_ce':
+    loss = LabelSmoothSoftmaxCEV1()
 else:
     raise NameError('未定义的损失类型')
 

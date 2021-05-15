@@ -1,3 +1,5 @@
 /.idea
 /Backbone/dctbot.py
 dctbot_train.py
+/Attention/dct.py
+/Attention/self_attention.py
