@@ -1,3 +1,4 @@
+import os
 import math
 import torch.nn as nn
 import torch.nn.functional as F
@@ -102,7 +103,8 @@ class Bottleneck(nn.Module):
         return out
 
 class ResNet(nn.Module):
-    def __init__(self,depth,layers,num_classes,pretrained,attn=None,fea_norm=False,fc_bias=False,weight_norm=False,**kwargs):
+    def __init__(self,depth,layers,num_classes,pretrained,logger=None,attn=None,fea_norm=False,fc_bias=False,
+                 weight_norm=False,**kwargs):
         #depth：网络深度
         #layers：各结构块组中结构块的重复次数
         #num_classes：分类的类别数
@@ -113,9 +115,9 @@ class ResNet(nn.Module):
         #weight_norm：分类器是否执行特征归一化
         #kwargs['pretrained_path']：预训练权重路径
         #kwargs['frozen']：已加载权重的层是否需要冻结
-
-        self.inplanes = 64
         super(ResNet,self).__init__()
+        self.logger=logger
+        self.inplanes = 64
         self.conv1 = nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3, bias=False)
         self.bn1 = nn.BatchNorm2d(64)
         self.relu = nn.ReLU(inplace=True)
@@ -143,8 +145,12 @@ class ResNet(nn.Module):
                 m.weight.data.fill_(1)
                 m.bias.data.zero_()
         if pretrained:
-            self.load_state_dict(model_zoo.load_url(model_urls['resnet%d'%depth],
-                                model_dir=kwargs['pretrained_path'] if 'pretrained_path' in kwargs.keys() else None),
+            if 'pretrained_path' in kwargs.keys():
+                model_dir,file_name=os.path.split(kwargs['pretrained_path'])
+            else:
+                model_dir, file_name=None,None
+            self.load_state_dict(model_zoo.load_url(model_urls['resnet%d'%depth],model_dir=model_dir,file_name=file_name),
+                                load_in_order=kwargs['load_in_order'] if 'load_in_order' in kwargs else False,
                                 frozen=kwargs['frozen'])
 
     def _make_layer(self, block, planes, blocks, attn=None, stride=1,**kwargs):
@@ -198,18 +204,26 @@ class ResNet(nn.Module):
             self.layer4,
         )
 
-    def load_state_dict(self, state_dict, frozen=False):
+    def load_state_dict(self, state_dict, load_in_order=False, frozen=False):
         model_dict = self.state_dict()
-        pretrained_dict = {k: v for k, v in state_dict.items() if k in model_dict and model_dict[k].size() == v.size()}
+        if load_in_order:
+            pretrained_dict={}
+            for (km,vm),(ks,vs) in zip(model_dict.items(),state_dict.items()):
+                if vm.size()==vs.size():
+                    pretrained_dict[km]=vs
+        else:
+            pretrained_dict = {k: v for k, v in state_dict.items() if k in model_dict and model_dict[k].size() == v.size()}
         if frozen:
             for p in self.named_parameters():
                 if p[0] in pretrained_dict:
                     p[1].requires_grad = False
-        if len(pretrained_dict) == len(state_dict):
-            print('%s: All params loaded' % type(self).__name__)
+        not_loaded_keys = [k for k in model_dict.keys() if k not in pretrained_dict.keys()]
+        if len(not_loaded_keys) == 0:
+            res_str='%s: All params loaded' % type(self).__name__
         else:
-            print('%s: Some params were not loaded:' % type(self).__name__)
-            not_loaded_keys = [k for k in state_dict.keys() if k not in pretrained_dict.keys()]
-            print(('%s, ' * (len(not_loaded_keys) - 1) + '%s') % tuple(not_loaded_keys))
+
+            res_str='%s: Some params were not loaded:' % type(self).__name__+('\n%s, ' * (len(not_loaded_keys) - 1) + '%s') % tuple(not_loaded_keys)
+        if self.logger: self.logger.info(res_str)
+        print(res_str)
         model_dict.update(pretrained_dict)
         super(ResNet, self).load_state_dict(model_dict)

@@ -52,4 +52,5 @@
 | Backbone | Attn | Loss                      | Top1 Acc |
 | -------- | ---- | ------------------------- | -------- |
 | ResNet50 | None | label smothing softmax ce | 87.159%  |
+| ResNet50 | None | softmax ce                | 86.020%  |
 

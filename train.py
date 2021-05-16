@@ -30,7 +30,8 @@ torch.backends.cudnn.benchmark = True
 parser = argparse.ArgumentParser(description='训练参数')
 dataset_group=parser.add_argument_group('dataset','数据集相关的参数')
 dataset_group.add_argument('--dataset_path', metavar='DIR', required=True, help='数据集路径')
-dataset_group.add_argument('--dataset_tag', type=str,choices=['bird','aircraft','dog','car','cifar10'],required=True,help='数据集类型')
+dataset_group.add_argument('--dataset_tag', type=str,choices=['bird','aircraft','dog','car','cifar10'],required=True,
+                           help='数据集类型')
 dataset_group.add_argument('--image_size',nargs=2, type=int, default=[224,224],help='输入图片的尺寸')
 
 scheduler_group=parser.add_argument_group('scheduler','学习率参数')
@@ -63,6 +64,7 @@ pretrain_group.add_argument('--pretrained',action='store_true',help='是否加�
 pretrain_group.add_argument('--pretrained_path',metavar='DIR',default=None,help='预训练权重的路径，'
                                 '默认加载pytorch官方提供的imagenet预训练权重')
 pretrain_group.add_argument('--frozen',action='store_true',help='已加载权重的层是否需要冻结')
+pretrain_group.add_argument('--load_in_order',action='store_true',help='已加载权重的层是否需要冻结')
 pretrain_group.add_argument('--checkpoint_path',metavar='DIR',default='',help='已训练的权重保存位置')
 
 visualize_group=parser.add_argument_group('visualize','网络可视化相关的参数')
@@ -157,7 +159,7 @@ def main():
         images,labels=next(iter(validate_loader))
 
     if args.net_arch=='resnet50':
-        net=ResNet(50,[3,4,6,3],num_classes,args.pretrained,fea_norm=args.fea_norm,fc_bias=args.fc_bias,
+        net=ResNet(50,[3,4,6,3],num_classes,args.pretrained,logger=logging,fea_norm=args.fea_norm,fc_bias=args.fc_bias,
                    weight_norm=args.weight_norm,frozen=args.frozen,pretrained_path=args.pretrained_path)
     else:
         raise NameError('未实现的网络结构')
@@ -166,14 +168,15 @@ def main():
     start_epoch = 0
     if args.checkpoint_path:
         checkpoint = torch.load(args.checkpoint_path)
-
-        # Get epoch and some logs
-        logs = checkpoint['logs']
-        start_epoch = int(logs['epoch'])
-
-        # Load weights
-        state_dict = checkpoint['state_dict']
-        net.load_state_dict(state_dict,frozen=args.frozen)
+        try:
+            # Get epoch and some logs
+            logs = checkpoint['logs']
+            start_epoch = int(logs['epoch'])
+            # Load weights
+            state_dict = checkpoint['state_dict']
+        except KeyError:
+            state_dict=checkpoint
+        net.load_state_dict(state_dict,load_in_order=args.load_in_order,frozen=args.frozen)
     # feature_center: size of (#classes, #attention_maps * #channel_features)
     # feature_center = torch.zeros(num_classes, net.num_features).to(device)
 
@@ -221,8 +224,12 @@ def main():
     ##################################
     # TRAINING
     ##################################
-    logging.info('Start training: Total epochs: {}, Batch size: {}, Training size: {}, Validation size: {}'.
-                 format(args.epoch, args.train_batch_size, len(train_dataset), len(validate_dataset)))
+    logging.info('Start training: Training size: {}, Validation size: {}'.
+                 format(len(train_dataset), len(validate_dataset)))
+    logging.info('Arguments:')
+
+    for k, v in sorted(vars(args).items()):
+        logging.info('{}: {}'.format(k,v))
     logging.info('')
 
     for epoch in range(start_epoch, args.epoch):
@@ -249,8 +256,16 @@ def main():
                 scheduler.step()
 
         callback.on_epoch_end(logs, net)#, feature_center=feature_center)
+
+        logging.info('current top train accuracy: {:g}, current top val accuracy: {:g}'.format(
+            logs['train_raw_topk_accuracy'][0],logs['val_topk_accuracy'][0]))
+        logging.info('')
         if args.tensorboard:
             writer.flush()
+
+    if args.tensorboard:
+        writer.close()
+
 
 def train(**kwargs):
     # Retrieve training configuration
@@ -417,10 +432,9 @@ def validate(**kwargs):
     # print(batch_info)
     # write log for this epoch
     logging.info('Valid: {}, Time {:3.2f}'.format(batch_info, end_time - start_time))
-    logging.info('')
+
 
 
 if __name__ == '__main__':
     main()
-    if args.tensorboard:
-        writer.close()
+
