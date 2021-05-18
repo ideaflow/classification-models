@@ -161,6 +161,10 @@ def main():
     if args.net_arch=='resnet50':
         net=ResNet(50,[3,4,6,3],num_classes,args.pretrained,logger=logging,fea_norm=args.fea_norm,fc_bias=args.fc_bias,
                    weight_norm=args.weight_norm,frozen=args.frozen,pretrained_path=args.pretrained_path)
+    elif args.net_arch=='resnet50_se':
+        net = ResNet(50, [3, 4, 6, 3], num_classes, args.pretrained, logger=logging, attn='se',fea_norm=args.fea_norm,
+                     fc_bias=args.fc_bias,weight_norm=args.weight_norm, frozen=args.frozen, pretrained_path=args.pretrained_path,
+                     reduction=16)
     else:
         raise NameError('未实现的网络结构')
 

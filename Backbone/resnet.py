@@ -3,7 +3,7 @@ import math
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.utils.model_zoo as model_zoo
-from Attention import CBAMLayer
+from Attention import CBAMLayer,SELayer
 
 __all__ = ['ResNet']
 
@@ -74,6 +74,8 @@ class Bottleneck(nn.Module):
 
         if attn=='cbam':
             self.attn = CBAMLayer(planes * Bottleneck.expansion)
+        elif attn=='se':
+            self.attn=SELayer(planes * Bottleneck.expansion,kwargs['reduction'])
         else:
             self.attn=None
 
@@ -115,6 +117,7 @@ class ResNet(nn.Module):
         #weight_norm：分类器是否执行特征归一化
         #kwargs['pretrained_path']：预训练权重路径
         #kwargs['frozen']：已加载权重的层是否需要冻结
+        # kwargs['reduction']：se注意力中bottleneck通道数减少的倍数
         super(ResNet,self).__init__()
         self.logger=logger
         self.inplanes = 64
@@ -206,13 +209,17 @@ class ResNet(nn.Module):
 
     def load_state_dict(self, state_dict, load_in_order=False, frozen=False):
         model_dict = self.state_dict()
+        pretrained_dict = {}
         if load_in_order:
-            pretrained_dict={}
             for (km,vm),(ks,vs) in zip(model_dict.items(),state_dict.items()):
                 if vm.size()==vs.size():
                     pretrained_dict[km]=vs
         else:
-            pretrained_dict = {k: v for k, v in state_dict.items() if k in model_dict and model_dict[k].size() == v.size()}
+            for k, v in state_dict.items():
+                k=k.replace('se.','attn.')
+                if k in model_dict and model_dict[k].size() == v.size():
+                    pretrained_dict[k]=v
+
         if frozen:
             for p in self.named_parameters():
                 if p[0] in pretrained_dict:
