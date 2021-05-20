@@ -165,6 +165,10 @@ def main():
         net = ResNet(50, [3, 4, 6, 3], num_classes, args.pretrained, logger=logging, attn='se',fea_norm=args.fea_norm,
                      fc_bias=args.fc_bias,weight_norm=args.weight_norm, frozen=args.frozen, pretrained_path=args.pretrained_path,
                      reduction=16)
+    elif args.net_arch=='resnet50_cbam':
+        net = ResNet(50, [3, 4, 6, 3], num_classes, args.pretrained, logger=logging, attn='cbam',fea_norm=args.fea_norm,
+                     fc_bias=args.fc_bias,weight_norm=args.weight_norm, frozen=args.frozen, pretrained_path=args.pretrained_path,
+                     reduction=16)
     else:
         raise NameError('未实现的网络结构')
 
@@ -179,7 +183,10 @@ def main():
             # Load weights
             state_dict = checkpoint['state_dict']
         except KeyError:
-            state_dict=checkpoint
+            try:
+                state_dict = checkpoint['state_dict']
+            except KeyError:
+                state_dict = checkpoint
         net.load_state_dict(state_dict,load_in_order=args.load_in_order,frozen=args.frozen)
     # feature_center: size of (#classes, #attention_maps * #channel_features)
     # feature_center = torch.zeros(num_classes, net.num_features).to(device)

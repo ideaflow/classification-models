@@ -3,7 +3,7 @@ import math
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.utils.model_zoo as model_zoo
-from Attention import CBAMLayer,SELayer
+from Attention import CBAM,SELayer
 
 __all__ = ['ResNet']
 
@@ -30,7 +30,7 @@ class BasicBlock(nn.Module):
         self.stride = stride
 
         if cbam is not None:
-            self.cbam = CBAMLayer(planes)
+            self.cbam = CBAM(planes)
         else:
             self.cbam = None
 
@@ -73,7 +73,7 @@ class Bottleneck(nn.Module):
         self.stride = stride
 
         if attn=='cbam':
-            self.attn = CBAMLayer(planes * Bottleneck.expansion)
+            self.attn = CBAM(planes * Bottleneck.expansion)
         elif attn=='se':
             self.attn=SELayer(planes * Bottleneck.expansion,kwargs['reduction'])
         else:
@@ -216,7 +216,8 @@ class ResNet(nn.Module):
                     pretrained_dict[km]=vs
         else:
             for k, v in state_dict.items():
-                k=k.replace('se.','attn.')
+                k=k.replace('module.','')
+                k=k.replace('cbam.','attn.')
                 if k in model_dict and model_dict[k].size() == v.size():
                     pretrained_dict[k]=v
 
